@@ -1,17 +1,35 @@
 package mlbigbook.ml
 
-trait DecisionTree[D] {
+trait DecisionTree {
 
-	final type Decision = D
+	type Decision
 
-	type Attribute
-	type Value
-	final type Test = (Attribute, Value) => Node
+  final type FeatVec = breeze.linalg.Vector[Value]
+	final type Value = Double
+
+	final type Children = Seq[Node]
+  final type Test = Children => FeatVec => Node  
 
 	sealed trait Node
-	case class Parent(t: Test, children: Seq[Node]) extends Node
+	case class Parent(t: Test, c: Children) extends Node
 	case class Leaf(d: Decision) extends Node
 
+  type Decider = Node => FeatVec => Decision
+
+  def decide: Decider = 
+    decisionTree => featureVector => {
+
+      def descend: Node => Decision = {
+
+        case Parent(test, children) => 
+          descend(test(children)(featureVector))
+
+        case Leaf(d) => 
+          d
+      }
+
+      descend(decisionTree)      
+    }
 }
 
 object OptionSeqDsl {
