@@ -1,34 +1,36 @@
 package mlbigbook.ml
 
+object FeatureVectorSupport {
+  final type FeatVec = breeze.linalg.Vector[Value]
+  final type Value = Double
+}
+
 trait DecisionTree {
 
-	type Decision
+  import FeatureVectorSupport._
 
-  final type FeatVec = breeze.linalg.Vector[Value]
-	final type Value = Double
+  type Decision
+  final type Children = Seq[Node]
+  final type Test = Children => FeatVec => Node
 
-	final type Children = Seq[Node]
-  final type Test = Children => FeatVec => Node  
-
-	sealed trait Node
-	case class Parent(t: Test, c: Children) extends Node
-	case class Leaf(d: Decision) extends Node
+  sealed trait Node
+  case class Parent(t: Test, c: Children) extends Node
+  case class Leaf(d: Decision) extends Node
 
   type Decider = Node => FeatVec => Decision
-
-  def decide: Decider = 
+  def decide: Decider =
     decisionTree => featureVector => {
 
-      def descend: Node => Decision = {
+        def descend: Node => Decision = {
 
-        case Parent(test, children) => 
-          descend(test(children)(featureVector))
+          case Parent(test, children) =>
+            descend(test(children)(featureVector))
 
-        case Leaf(d) => 
-          d
-      }
+          case Leaf(d) =>
+            d
+        }
 
-      descend(decisionTree)      
+      descend(decisionTree)
     }
 }
 
@@ -79,7 +81,7 @@ object BinaryTreeExplore {
 			Display the data part of root element (or current element)
 			Traverse the right subtree by recursively calling the in-order function
   */
-	
+
   def inOrder[V]: Traverser[V] = {
 
     case Parent(left, item, right) =>
