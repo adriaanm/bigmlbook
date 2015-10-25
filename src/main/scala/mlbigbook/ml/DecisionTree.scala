@@ -1,18 +1,18 @@
 package mlbigbook.ml
 
-// trait DecisionTree[D] {
+trait DecisionTree[D] {
 
-// 	final type Decision = D
+	final type Decision = D
 
-// 	type Attribute
-// 	type Value
-// 	final type Test = (Attribute, Value) => Node
+	type Attribute
+	type Value
+	final type Test = (Attribute, Value) => Node
 
-// 	sealed trait Node
-// 	case class Parent(t: Test, children: Seq[Node]) extends Node
-// 	case class Leaf(d: Decision) extends Node
+	sealed trait Node
+	case class Parent(t: Test, children: Seq[Node]) extends Node
+	case class Leaf(d: Decision) extends Node
 
-// }
+}
 
 object OptionSeqDsl {
 
@@ -35,6 +35,8 @@ object BinaryTreeExplore {
   // Traversals
   //
 
+  type Traverser[V] = Node[V] => Seq[V]
+
   // From Wikipedia:
   /*
 		Pre-order
@@ -43,7 +45,7 @@ object BinaryTreeExplore {
 			Traverse the right subtree by recursively calling the pre-order function.
 	*/
 
-  def preOrder[V](n: Node[V]): Seq[V] = {
+  def preOrder[V]: Traverser[V] = {
 
     case Parent(left, item, right) =>
       item +: (left.map(preOrder).getOrEmpty ++ right.map(preOrder).getOrEmpty)
@@ -58,9 +60,9 @@ object BinaryTreeExplore {
 			Traverse the left subtree by recursively calling the in-order function
 			Display the data part of root element (or current element)
 			Traverse the right subtree by recursively calling the in-order function
-	*/
-
-  def inOrder[V](n: Node[V]): Seq[V] = {
+  */
+	
+  def inOrder[V]: Traverser[V] = {
 
     case Parent(left, item, right) =>
       (left.map(inOrder).getOrEmpty :+ item) ++ right.map(inOrder).getOrEmpty
@@ -77,7 +79,7 @@ object BinaryTreeExplore {
 			Display the data part of root element (or current element).
 	*/
 
-  def postOrder[V](n: Node[V]): Seq[V] = {
+  def postOrder[V]: Traverser[V] = {
 
     case Parent(left, item, right) =>
       left.map(postOrder).getOrEmpty ++ right.map(postOrder).getOrEmpty :+ item
@@ -100,7 +102,7 @@ object GenericTreeExplore {
 
   type Traverser[V] = Node[V] => Seq[V]
 
-  def preOrder[V](n: Node[V]): Seq[V] = {
+  def preOrder[V]: Traverser[V] = {
 
     case Parent(children, item) =>
       item +: children.flatMap(preOrder)
@@ -109,7 +111,7 @@ object GenericTreeExplore {
       Seq(item)
   }
 
-  def postOrder[V](n: Node[V]): Seq[V] = {
+  def postOrder[V]: Traverser[V] = {
 
     case Parent(children, item) =>
       children.flatMap(postOrder) :+ item
