@@ -41,10 +41,10 @@ class OnlineMeanVarianceTest extends FunSpec with Matchers {
 
     it("should work") {
 
-      import mlbigbook.data.Data
-      import Data._
+      import mlbigbook.data.DataClass
+      import DataClass._
 
-      val data: Data[DenseVector[Double]] = Seq(DenseVector(12.0), DenseVector(-1.0), DenseVector(55.0))
+      val data: DataClass[DenseVector[Double]] = Seq(DenseVector(12.0), DenseVector(-1.0), DenseVector(55.0))
 
       val expectedStats =
         Stats(

@@ -1,7 +1,7 @@
 package mlbigbook.math
 
 import breeze.linalg.Vector
-import mlbigbook.data.Data
+import mlbigbook.data.DataClass
 import mlbigbook.ml.Stats
 
 import scala.language.higherKinds
@@ -71,7 +71,7 @@ object OnlineMeanVariance {
    */
   def apply[N: NumericConversion, V[_] <: Vector[_]](
     existing: State[N, V],
-    elems:    Data[V[N]]
+    elems:    DataClass[V[N]]
   )(implicit ops: VectorOpsT[N, V]): State[N, V] =
     elems.headOption match {
 
@@ -121,7 +121,7 @@ object OnlineMeanVariance {
     }
 
   def batch[N: NumericConversion, V[_] <: Vector[_]](
-    elems: Data[V[N]]
+    elems: DataClass[V[N]]
   )(implicit ops: VectorOpsT[N, V]): Stats[V[N]] =
     elems.headOption match {
 

@@ -1,6 +1,6 @@
 package mlbigbook.ml
 
-import mlbigbook.data.Data
+import mlbigbook.data.DataClass
 
 import scala.language.postfixOps
 import scala.reflect.ClassTag
@@ -20,7 +20,7 @@ trait Learning[A, B] {
   type Estimator = Instance => DiscreteDistribution[Label]
 
   type Pair = (Instance, Label)
-  type TrainingData = Data[Pair]
+  type TrainingData = DataClass[Pair]
 
   type Learner = TrainingData => (Classifier, Estimator)
 }

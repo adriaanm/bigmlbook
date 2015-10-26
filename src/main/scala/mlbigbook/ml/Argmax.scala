@@ -1,6 +1,6 @@
 package mlbigbook.ml
 
-import mlbigbook.data.Data
+import mlbigbook.data.DataClass
 
 import scala.reflect.ClassTag
 
@@ -19,7 +19,7 @@ object Argmax {
    *
    * throws IllegalArgumentException Iff `elements` is empty.
    */
-  def apply[B: ClassTag](elements: Data[B])(implicit ev: Val[B]): B =
+  def apply[B: ClassTag](elements: DataClass[B])(implicit ev: Val[B]): B =
     if (elements isEmpty)
       throw emptyError
 
