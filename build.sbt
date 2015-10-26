@@ -30,7 +30,7 @@ libraryDependencies ++= Seq(
 // as of 1.4.0, spark still requires jvm 1.7
 lazy val jvm = "1.7"
 
-scalaVersion := "2.11.7"
+scalaVersion := "2.11.6"
 
 crossScalaVersions := Seq("2.10.5", "2.11.7")
 
@@ -56,8 +56,8 @@ scalacOptions ++= Seq(
   "-Ywarn-infer-any",
   "-Yinline",
   "-Yinline-handlers",
-  "-Yopt-warnings",
-  "-Yopt:_"
+  //"-Yopt-warnings",
+  //"-Yopt:_"
 )
 
 ///////////////////////////////////////////////////////////////////////////////

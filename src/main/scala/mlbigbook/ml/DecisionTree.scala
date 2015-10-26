@@ -47,7 +47,7 @@ trait Id3Learning {
   type Entropy
   implicit def entIsNum: NumericX[Entropy]
 
-  type EntropyOf =
+  
 
 }
 
