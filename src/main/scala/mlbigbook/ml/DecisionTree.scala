@@ -1,5 +1,7 @@
 package mlbigbook.ml
 
+import mlbigbook.math.NumericX
+
 object FeatureVectorSupport {
   final type FeatVec = breeze.linalg.Vector[Value]
   final type Value = Double
@@ -32,6 +34,21 @@ trait DecisionTree {
 
       descend(decisionTree)
     }
+}
+
+trait Id3Learning {
+  /*
+  Calculate the entropy of every attribute using the data set S
+  Split the set S into subsets using the attribute for which entropy is minimum (or, equivalently, information gain is maximum)
+  Make a decision tree node containing that attribute
+  Recurse on subsets using remaining attributes.
+   */
+
+  type Entropy
+  implicit def entIsNum: NumericX[Entropy]
+
+  type EntropyOf =
+
 }
 
 object OptionSeqDsl {
