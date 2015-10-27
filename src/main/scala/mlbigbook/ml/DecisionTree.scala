@@ -1,12 +1,14 @@
 package mlbigbook.ml
 
-import breeze.linalg.Vector
+import breeze.linalg.{ DenseVector, Vector }
 import breeze.linalg.support.CanMapValues
 import fif.Data
 import mlbigbook.data.DataClass
 import mlbigbook.math.{ VectorOpsT, NumericConversion, OnlineMeanVariance, NumericX }
+import simulacrum.typeclass
 
 import scala.language.higherKinds
+import scala.reflect.ClassTag
 
 object FeatureVectorSupport {
   final type FeatVec = breeze.linalg.Vector[Value]
@@ -106,13 +108,107 @@ trait Id3Learning {
       trait Foo[B] extends CanMapValues[V[N], N, B, V[B]] {
 
         /**Maps all key-value pairs from the given collection. */
-        def map(from: V[N], fn: (N => B)): V[B] =
-          from.values.map[V[_], B, V[B]](fn)
+        def map(from: V[N], fn: (N => B)): V[B] = ???
+        //          from.values.map[V[_], B, V[B]](fn)
 
         /**Maps all active key-value pairs from the given collection. */
         def mapActive(from: V[N], fn: (N => B)): V[B] = ???
       }
     }
+  }
+
+  @typeclass trait VectorHofs[V[_] <: Vector[_]] {
+
+    def map[A: Numeric, B: ClassTag](v: V[A])(f: A => B): V[B]
+
+    def foldLeft[A: Numeric, B: Numeric](v: V[A])(zero: B)(comb: (B, A) => B): B
+
+    def foldRight[A: Numeric, B: Numeric](v: V[A])(zero: B)(comb: (A, B) => B): B
+
+    def reduce[A: Numeric](v: V[A])(r: (A, A) => A): A
+
+  }
+
+  object ImplicitVectorHofs {
+
+    def apply[V[_] <: Vector[_]: VectorHofs]: VectorHofs[V] =
+      implicitly[VectorHofs[V]]
+
+    implicit object DenseVectorHof extends VectorHofs[DenseVector] {
+
+      override def map[A: Numeric, B: ClassTag](v: DenseVector[A])(f: (A) => B): DenseVector[B] = {
+
+        val size = v.length
+        val arr = new Array[B](size)
+        val d = v.data
+        val stride = v.stride
+
+        var i = 0
+        var j = v.offset
+
+        while (i < size) {
+          arr(i) = f(d(j))
+          i += 1
+          j += stride
+        }
+
+        new DenseVector[B](arr)
+      }
+
+      override def foldLeft[A: Numeric, B: Numeric](v: DenseVector[A])(zero: B)(comb: (B, A) => B): B = {
+        // The entire definition is equivalent to:
+        // v.valuesIterator.foldLeft(zero)(comb)
+        val size = v.length
+        val d = v.data
+        val stride = v.stride
+
+        var accum = zero
+        var i = 0
+        var j = v.offset
+
+        while (i < size) {
+          accum = comb(accum, d(j))
+          i += 1
+          j += stride
+        }
+
+        accum
+      }
+
+      override def foldRight[A: Numeric, B: Numeric](v: DenseVector[A])(zero: B)(comb: (A, B) => B): B = {
+        // The entire definition is equivalent to:
+        // v.valuesIterator.foldRight(zero)(comb)
+        val size = v.length
+        val d = v.data
+        val stride = v.stride
+
+        var accum = zero
+        var i = size
+        var j = i - v.offset
+
+        while (i >= 0) {
+          accum = comb(d(j), accum)
+          i -= 1
+          j -= stride
+        }
+
+        accum
+      }
+
+      override def reduce[A: Numeric](v: DenseVector[A])(r: (A, A) => A): A = {
+        // The entire definition is equivalent to:
+        // v.valuesIterator.reduce(r)
+        // TODO Implement more efficient imperative reduce for DenseVector s!
+        v.valuesIterator.reduce(r)
+      }
+
+    }
+
+  }
+
+  // TODO delete me
+  def test[V[_] <: Vector[_]: VectorHofs](v: V[Double]): V[Double] = {
+    ImplicitVectorHofs[V].map(v)(value => value * 2.0)
   }
 
   trait GaussianEstimatedEntropy extends ContinousEntropy {
@@ -125,10 +221,11 @@ trait Id3Learning {
       import fs._
       val Stats(_, _, variance) = OnlineMeanVariance.batch(data.asInstanceOf[DataClass[V[N]]])
 
-      variance.map { sigmaSq =>
-        val sigma = math.sqrt(implicitly[NumericConversion[N]].numeric.toDouble(sigmaSq.asInstanceOf[N]))
-        math.log(sigma * const)
-      }(CanMapValuesSupport[Double])
+      ???
+      //      variance.map { sigmaSq =>
+      //        val sigma = math.sqrt(implicitly[NumericConversion[N]].numeric.toDouble(sigmaSq.asInstanceOf[N]))
+      //        math.log(sigma * const)
+      //      }(CanMapValuesSupport[Double])
     }
 
   }
