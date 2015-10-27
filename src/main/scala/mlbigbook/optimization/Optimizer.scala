@@ -13,9 +13,9 @@ object Optimizer {
 
   def optimize(
     iter:              Int,
-    seed:              Long                 = 42L,
-    initAlpha:         Double               = 0.1,
-    momentum:          Double               = 0.0,
+    seed:              Long                      = 42L,
+    initAlpha:         Double                    = 0.1,
+    momentum:          Double                    = 0.0,
     gradFn:            GradFn,
     costFn:            CostFn,
     updateFn:          WeightUpdate,

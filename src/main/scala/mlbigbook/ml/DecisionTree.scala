@@ -1,6 +1,12 @@
 package mlbigbook.ml
 
-import mlbigbook.math.NumericX
+import breeze.linalg.Vector
+import breeze.linalg.support.CanMapValues
+import fif.Data
+import mlbigbook.data.DataClass
+import mlbigbook.math.{ VectorOpsT, NumericConversion, OnlineMeanVariance, NumericX }
+
+import scala.language.higherKinds
 
 object FeatureVectorSupport {
   final type FeatVec = breeze.linalg.Vector[Value]
@@ -37,6 +43,9 @@ trait DecisionTree {
 }
 
 trait Id3Learning {
+
+  import fif.Data.ops._
+
   /*
   Calculate the entropy of every attribute using the data set S
   Split the set S into subsets using the attribute for which entropy is minimum (or, equivalently, information gain is maximum)
@@ -47,7 +56,113 @@ trait Id3Learning {
   type Entropy
   implicit def entIsNum: NumericX[Entropy]
 
-//  def entropyOf[D:]
+  trait FeatureSpace[N, V[_] <: Vector[_]] {
+
+    implicit def numConv: NumericConversion[N]
+    implicit def vecOps: VectorOpsT[N, V]
+
+    def size: Int
+    def nameOf(index: Int): Option[String]
+    def range: IndexedSeq[Boolean]
+    def zero: Boolean
+  }
+
+  //  trait ContinousEntropy[C] {
+  //    def continuous[D[_] : Data, N: NumericConversion, V[_] <: Vector[_]](c: C)(data: D[V[N]])(implicit fs: FeatureSpace[N,V]): V[Double]
+  //  }
+
+  //  object GaussianEstimatedEntropy {
+  //
+  //    private[this] val const = math.sqrt(2.0 * math.Pi * math.E)
+  //
+  //    def continuous[D[_] : Data, N : NumericConversion, V[_] <: Vector[_]](data: D[V[N]])(implicit fs: FeatureSpace[N, V]) = {
+  //
+  //      import fs._
+  //      val Stats(_, _, variance) = OnlineMeanVariance.batch(data.asInstanceOf[DataClass[V[N]]])
+  //
+  //      variance.map { sigmaSq =>
+  //          val sigma = math.sqrt(implicitly[NumericConversion[N]].numeric.toDouble(sigmaSq))
+  //          math.log(sigma * const)
+  //        }
+  //    }
+  //  }
+
+  trait ContinousEntropy {
+
+    type N
+    type V[_] <: Vector[_]
+    type D[_]
+
+    implicit def d: Data[D]
+    implicit val fs: FeatureSpace[N, V]
+
+    def continuous(data: D[V[N]]): V[N]
+
+    object CanMapValuesSupport {
+
+      def apply[B]: CanMapValues[V[N], N, B, V[B]] =
+        new Foo[B] {}
+
+      trait Foo[B] extends CanMapValues[V[N], N, B, V[B]] {
+
+        /**Maps all key-value pairs from the given collection. */
+        def map(from: V[N], fn: (N => B)): V[B] =
+          from.values.map[V[N], B, V[B]](fn)
+
+        /**Maps all active key-value pairs from the given collection. */
+        def mapActive(from: V[N], fn: (N => B)): V[B] = ???
+      }
+    }
+  }
+
+  trait GaussianEstimatedEntropy extends ContinousEntropy {
+
+    private[this] val const = math.sqrt(2.0 * math.Pi * math.E)
+
+    override def continuous(data: D[V[N]]) = {
+      import Data.ops._
+
+      import fs._
+      val Stats(_, _, variance) = OnlineMeanVariance.batch(data.asInstanceOf[DataClass[V[N]]])
+
+      variance.map { sigmaSq =>
+        val sigma = math.sqrt(implicitly[NumericConversion[N]].numeric.toDouble(sigmaSq.asInstanceOf[N]))
+        math.log(sigma * const)
+      }(CanMapValuesSupport[Double])
+    }
+
+  }
+
+  trait GaussianEstimatedEntropy__ {
+
+    type N
+    type V[_] <: Vector[_]
+    type D[_]
+
+    implicit def d: Data[D]
+    implicit val fs: FeatureSpace[N, V]
+    import fs._
+
+    private[this] val const = math.sqrt(2.0 * math.Pi * math.E)
+
+    def continuous(data: D[V[N]]) = {
+      import Data.ops._
+
+      import fs._
+      val Stats(_, _, variance) = OnlineMeanVariance.batch(data.asInstanceOf[DataClass[V[N]]])
+
+      variance.map { sigmaSq =>
+        val sigma = math.sqrt(implicitly[NumericConversion[N]].numeric.toDouble(sigmaSq.asInstanceOf[N]))
+        math.log(sigma * const)
+      }
+    }
+  }
+
+  object Implicits {
+    //    implicit object GaussIsCont extends ContinousEntropy[GaussianEstimatedEntropy] {
+    //
+    //    }
+  }
 
 }
 
