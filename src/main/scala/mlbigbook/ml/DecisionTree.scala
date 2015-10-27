@@ -107,7 +107,7 @@ trait Id3Learning {
 
         /**Maps all key-value pairs from the given collection. */
         def map(from: V[N], fn: (N => B)): V[B] =
-          from.values.map[V[N], B, V[B]](fn)
+          from.values.map[V[_], B, V[B]](fn)
 
         /**Maps all active key-value pairs from the given collection. */
         def mapActive(from: V[N], fn: (N => B)): V[B] = ???
