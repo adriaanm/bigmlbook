@@ -12,6 +12,9 @@ import scala.util.Random
  * @author Malcolm Greaves
  */
 class OnlineMeanVarianceTest extends FunSpec with Matchers {
+
+  implicit private[this] val t = fif.TravData
+
   //
   //  lazy val rand = new Random(42L)
   //  lazy val numEl = 1e6.toInt
@@ -41,10 +44,7 @@ class OnlineMeanVarianceTest extends FunSpec with Matchers {
 
     it("should work") {
 
-      import mlbigbook.data.DataClass
-      import DataClass._
-
-      val data: DataClass[DenseVector[Double]] = Seq(DenseVector(12.0), DenseVector(-1.0), DenseVector(55.0))
+      val data: Traversable[DenseVector[Double]] = Seq(DenseVector(12.0), DenseVector(-1.0), DenseVector(55.0))
 
       val expectedStats =
         Stats(
@@ -59,6 +59,7 @@ class OnlineMeanVarianceTest extends FunSpec with Matchers {
 
       import VectorOpsT.Implicits._
       import NumericConversion.Implicits._
+
 
       OnlineMeanVariance.batch(data) match {
         case s @ Stats(count, mean, variance) =>

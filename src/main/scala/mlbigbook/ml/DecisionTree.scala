@@ -24,16 +24,6 @@ object FeatureVectorSupport {
     isCategorical: Seq[Boolean]
   )
 
-  type Discretized = Seq[String]
-
-  type IndexRange = Seq[Int]
-
-  case class DiscretizedFeatureSpace(
-    original:                      FeatureSpace,
-    expandedFeatures:              Seq[String],
-    originalIndex2ExpandedIndices: Seq[IndexRange]
-  )
-
 }
 
 trait DecisionTree {
@@ -141,28 +131,13 @@ object Id3LearningSimpleFv {
     fs: FeatureSpace
   ): T#Node = ???
 
-  def apply[D[_]: Data, T <: DecisionTree { type FeatureVector = Discretized; type Decision = String }](
-    data: D[(Discretized, String)]
-  )(
-    implicit
-    efs: DiscretizedFeatureSpace
-  ): T#Node = ???
-
 }
 
 object InformationSimpleFv {
 
   import fif.Data.ops._
   import FeatureVectorSupport._
-
-  def discretize[D[_]: Data](
-    data: D[FeatVec]
-  )(
-    implicit
-    fs: FeatureSpace
-  ): (DiscretizedFeatureSpace, D[Discretized]) = {
-    ???
-  }
+  import OnlineMeanVariance._
 
   def entropy[D[_]: Data, FV](
     data: D[FV]
@@ -172,7 +147,118 @@ object InformationSimpleFv {
     isFv: FV => FeatVec
   ): Seq[Double] = {
 
+    //
+    //
+    //
+    // DO CONTINOUS VARIABLES FIRST
+    //
+    //
+    //
+
+    val catFeat2event2count: Map[String, Map[String, Long]] = Map.empty
+
+
+
+    val realIndices =
+      fs.isCategorical
+        .zipWithIndex
+        .flatMap {
+          case (isCategory, index) =>
+            if (isCategory)
+              None
+            else
+              Some(index)
+        }
+
+    val realOnly: D[DenseVector[Double]] =
+      data.map { fv =>
+          val realValues =
+            realIndices.map { index =>
+                fv(index) match {
+
+                  case Real(v) =>
+                    v
+
+                  case Categorical(_) =>
+                    throw new IllegalStateException(
+                      s"Violation of FeatureSpace contract: feature at index $index is categorical, expecting real"
+                    )
+                }
+              }
+              .toArray
+
+          DenseVector(realValues)
+        }
+
+
+    import NumericConversion.Implicits._
+    import VectorOpsT.Implicits._
+
+    val statsForAllRealFeatures = OnlineMeanVariance.batch[D, Double, DenseVector](realOnly)
+
+    import MathOps._
+    val gf = GaussianFactory[Double]
+
+    val realFeat2estMeanVar: Map[String, GaussianFactory[Double]#Gaussian] =
+      realIndices.map { index =>
+          val g = new gf.Gaussian(
+            mean = statsForAllRealFeatures.mean(index),
+            variance = statsForAllRealFeatures.variance(index),
+            stddev = math.sqrt(statsForAllRealFeatures.variance(index))
+          )
+          (fs.features(index), g)
+        }
+        .toMap
+
+    //
+    //
+    //
+    // DO CATEGORICAL VARIABLES SECOND
+    //
+    //
+    //
+
+
+    val catIndices =
+      fs.isCategorical
+        .zipWithIndex
+        .flatMap {
+          case (isCategory, index) =>
+            if(isCategory)
+              Some(index)
+            else
+              None
+        }
+
+    val categoricalOnly: D[Seq[String]] =
+      data.map { fv =>
+
+        catIndices.map { index =>
+
+          fv(index) match {
+
+            case Categorical(v) =>
+              v
+
+            case Real(_) =>
+              throw new IllegalStateException(
+                s"Violation of FeatureSpace contract: feature at index $index is real, expecting categorical"
+              )
+          }
+        }
+      }
+
+    //
+    //
+    //
+    // CALCULATE ENTROPY FOR ALL FEATURES
+    //
+    //
+    //
+
+
     /*
+      Strategy for discrete variables:
 
       for each feature
         - count events
@@ -181,13 +267,17 @@ object InformationSimpleFv {
         for each event in feature:
           - calculate P(event) ==> # events / total
           - entropy(feature)   ==> - sum( p(event) * log_2( p(event) ) )
-
      */
 
-    //    val feat2event2count = Map.empty[String, Map[String, ]]
+    /*
+      Strategy for continuous variables:
+
+        (1) Calculate mean & variance for each continous variable.
+        (2) Construct a gaussian with ^^.
+        (3) Calculate entropy of each estimated gaussian.
+     */
 
     ???
-
   }
 
 }
