@@ -24,11 +24,11 @@ object FeatureVectorSupport {
     isCategorical: Seq[Boolean]
   )
 
-  type OneHotEncoded = Seq[String]
+  type Discretized = Seq[String]
 
   type IndexRange = Seq[Int]
 
-  case class OneHotEncodedFeatureSpace(
+  case class DiscretizedFeatureSpace(
     original:                      FeatureSpace,
     expandedFeatures:              Seq[String],
     originalIndex2ExpandedIndices: Seq[IndexRange]
@@ -141,11 +141,11 @@ object Id3LearningSimpleFv {
     fs: FeatureSpace
   ): T#Node = ???
 
-  def apply[D[_]: Data, T <: DecisionTree { type FeatureVector = OneHotEncoded; type Decision = String }](
-    data: D[(OneHotEncoded, String)]
+  def apply[D[_]: Data, T <: DecisionTree { type FeatureVector = Discretized; type Decision = String }](
+    data: D[(Discretized, String)]
   )(
     implicit
-    efs: OneHotEncodedFeatureSpace
+    efs: DiscretizedFeatureSpace
   ): T#Node = ???
 
 }
@@ -154,6 +154,15 @@ object InformationSimpleFv {
 
   import fif.Data.ops._
   import FeatureVectorSupport._
+
+  def discretize[D[_]: Data](
+    data: D[FeatVec]
+  )(
+    implicit
+    fs: FeatureSpace
+  ): (DiscretizedFeatureSpace, D[Discretized]) = {
+    ???
+  }
 
   def entropy[D[_]: Data, FV](
     data: D[FV]
