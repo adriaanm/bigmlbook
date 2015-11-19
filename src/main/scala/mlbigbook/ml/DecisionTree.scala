@@ -7,41 +7,180 @@ import mlbigbook.data.DataClass
 import mlbigbook.math.{ VectorOpsT, NumericConversion, OnlineMeanVariance, NumericX }
 import simulacrum.typeclass
 
+import scala.annotation.tailrec
 import scala.language.higherKinds
 import scala.reflect.ClassTag
 
 object FeatureVectorSupport {
-  final type FeatVec = breeze.linalg.Vector[Value]
-  final type Value = Double
+
+  sealed trait Value
+  case class Categorical(v: String) extends Value
+  case class Real(v: Double) extends Value
+
+  type FeatVec = Seq[Value]
+
+  case class FeatureSpace(
+    features:      Seq[String],
+    isCategorical: Seq[Boolean]
+  )
+
+  type OneHotEncoded = Seq[String]
+
+  type IndexRange = Seq[Int]
+
+  case class OneHotEncodedFeatureSpace(
+    original:                      FeatureSpace,
+    expandedFeatures:              Seq[String],
+    originalIndex2ExpandedIndices: Seq[IndexRange]
+  )
+
 }
 
 trait DecisionTree {
 
-  import FeatureVectorSupport._
-
+  /**
+   * Abstract type. A stand-in for the overall decision type of an entire
+   * decision tree. Common cases include String (e.g.
+   */
   type Decision
-  final type Children = Seq[Node]
-  final type Test = Children => FeatVec => Node
 
+  /**
+   * Abstract type. A stand-in for the feature vector that the decision tree
+   * uses during learning and classification.
+   */
+  type FeatureVector
+
+  /**
+   * The children of a parent node. Must always be non-empty.
+   */
+  final type Children = Seq[Node]
+
+  /**
+   * A parent node's feature test. Functions of this type accept a non-empty
+   * sequence of children and a feature vector. The test will inspect values
+   * from the vector to determine which of the children to output.
+   */
+  final type Test = (Children, FeatureVector) => Node
+
+  /**
+   * A node of a decision tree. By itself, a Node instance is a fully
+   * functional decision tree. One may grow a decision tree from a single node,
+   * use an existing decision tree as a subtree of another, or prune a decision
+   * tree by selectively removing nodes.
+   *
+   * The Node abstract data type has two concrete instantiations:
+   * Parent and Leaf.
+   */
   sealed trait Node
+
+  /**
+   * A Parent is a Node sub-type that makes up a decision tree. Parents contain
+   * one or more child nodes and a Test function. The Test function is used in
+   * the decision making process. When presented with an input feature vector,
+   * one uses a Parent node's Test function to select from one of its own
+   * children.
+   */
   case class Parent(t: Test, c: Children) extends Node
+
+  /**
+   * A Leaf is a Node sub-type that makes up a decision tree. Leaves are the
+   * final decision making aspect of a decision tree. The decision process
+   * stops once a Leaf is encountered. At such a point, the Decision instance
+   * contained within the Leaf is returned as the decision tree's response.
+   */
   case class Leaf(d: Decision) extends Node
 
-  type Decider = Node => FeatVec => Decision
-  def decide: Decider =
+  /**
+   * The function type for making decisions using a decision tree node.
+   */
+  type Decider = Node => FeatureVector => Decision
+
+  /**
+   * Implementation of the decision making process using a decision tree.
+   * Is efficient and guaranteed to not incur a stack overflow.
+   */
+  val decide: Decider =
     decisionTree => featureVector => {
 
-        def descend: Node => Decision = {
+        @tailrec def descend(n: Node): Decision =
+          n match {
 
-          case Parent(test, children) =>
-            descend(test(children)(featureVector))
+            case Parent(test, children) =>
+              descend(test(children, featureVector))
 
-          case Leaf(d) =>
-            d
-        }
+            case Leaf(d) =>
+              d
+          }
 
       descend(decisionTree)
     }
+}
+
+object Id3LearningSimpleFv {
+
+  import fif.Data.ops._
+  import FeatureVectorSupport._
+
+  /*
+
+    (1) Calculate the entropy of every attribute using the data set S.
+
+    (2) Split the set S into subsets using the attribute for which entropy is
+        minimum (or, equivalently, information gain is maximum).
+
+    (3) Make a decision tree node containing that attribute.
+
+    (4) Recurse on subsets using remaining attributes.
+
+   */
+
+  def apply[D[_]: Data, T <: DecisionTree { type FeatureVector = FeatVec; type Decision = String }](
+    data: D[(FeatVec, String)]
+  )(
+    implicit
+    fs: FeatureSpace
+  ): T#Node = ???
+
+  def apply[D[_]: Data, T <: DecisionTree { type FeatureVector = OneHotEncoded; type Decision = String }](
+    data: D[(OneHotEncoded, String)]
+  )(
+    implicit
+    efs: OneHotEncodedFeatureSpace
+  ): T#Node = ???
+
+}
+
+object InformationSimpleFv {
+
+  import fif.Data.ops._
+  import FeatureVectorSupport._
+
+  def entropy[D[_]: Data, FV](
+    data: D[FV]
+  )(
+    implicit
+    fs:   FeatureSpace,
+    isFv: FV => FeatVec
+  ): Seq[Double] = {
+
+    /*
+
+      for each feature
+        - count events
+
+      for each feature
+        for each event in feature:
+          - calculate P(event) ==> # events / total
+          - entropy(feature)   ==> - sum( p(event) * log_2( p(event) ) )
+
+     */
+
+    //    val feat2event2count = Map.empty[String, Map[String, ]]
+
+    ???
+
+  }
+
 }
 
 trait Id3Learning {
@@ -49,10 +188,14 @@ trait Id3Learning {
   import fif.Data.ops._
 
   /*
-  Calculate the entropy of every attribute using the data set S
-  Split the set S into subsets using the attribute for which entropy is minimum (or, equivalently, information gain is maximum)
-  Make a decision tree node containing that attribute
-  Recurse on subsets using remaining attributes.
+   (1) Calculate the entropy of every attribute using the data set S.
+
+   (2) Split the set S into subsets using the attribute for which entropy is
+       minimum (or, equivalently, information gain is maximum).
+
+   (3) Make a decision tree node containing that attribute.
+
+   (4) Recurse on subsets using remaining attributes.
    */
 
   type Entropy
