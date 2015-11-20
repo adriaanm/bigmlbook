@@ -59,6 +59,7 @@ object Counting {
 
     smaller.foldLeft(larger) {
       case (aggmap, (k, v)) =>
+
         if (aggmap contains k)
           (aggmap - k) + (k -> implicitly[Numeric[N]].plus(aggmap(k), v))
 
