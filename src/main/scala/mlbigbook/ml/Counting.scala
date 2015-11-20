@@ -4,6 +4,7 @@ import fif.Data
 import Data.ops._
 
 import scala.language.higherKinds
+import scala.reflect.ClassTag
 
 object Counting {
 

@@ -60,7 +60,6 @@ class OnlineMeanVarianceTest extends FunSpec with Matchers {
       import VectorOpsT.Implicits._
       import NumericConversion.Implicits._
 
-
       OnlineMeanVariance.batch(data) match {
         case s @ Stats(count, mean, variance) =>
           count should be(expectedStats.count)

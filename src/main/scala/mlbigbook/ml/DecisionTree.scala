@@ -1,15 +1,11 @@
 package mlbigbook.ml
 
-import breeze.linalg.{ DenseVector, Vector }
-import breeze.linalg.support.CanMapValues
+import breeze.linalg.DenseVector
 import fif.Data
-import mlbigbook.data.DataClass
-import mlbigbook.math.{ VectorOpsT, NumericConversion, OnlineMeanVariance, NumericX }
-import simulacrum.typeclass
+import mlbigbook.math.{ VectorOpsT, NumericConversion, OnlineMeanVariance }
 
 import scala.annotation.tailrec
 import scala.language.higherKinds
-import scala.reflect.ClassTag
 
 object FeatureVectorSupport {
 
@@ -21,7 +17,8 @@ object FeatureVectorSupport {
 
   case class FeatureSpace(
     features:      Seq[String],
-    isCategorical: Seq[Boolean]
+    isCategorical: Seq[Boolean],
+    feat2index:    Map[String, Int]
   )
 
 }
@@ -147,14 +144,6 @@ object InformationSimpleFv {
     isFv: FV => FeatVec
   ): Seq[Double] = {
 
-    //
-    //
-    //
-    // DO CONTINOUS VARIABLES FIRST
-    //
-    //
-    //
-
     val (realIndices, catIndices) =
       fs.isCategorical
         .zipWithIndex
@@ -217,21 +206,38 @@ object InformationSimpleFv {
 
      */
 
+    //
+    //
+    //
+    // DO CONTINUOUS VARIABLES
+    //
+    //
+    //
+
+    /*
+      Strategy for continuous variables:
+
+        (1) Calculate mean & variance for each continous variable.
+        (2) Construct a gaussian with ^^.
+        (3) Calculate entropy of each estimated gaussian.
+    */
+
     val realOnly: D[DenseVector[Double]] =
       data.map { fv =>
         val realValues =
-          realIndices.map { index =>
-            fv(index) match {
+          realIndices
+            .map { index =>
+              fv(index) match {
 
-              case Real(v) =>
-                v
+                case Real(v) =>
+                  v
 
-              case Categorical(_) =>
-                throw new IllegalStateException(
-                  s"Violation of FeatureSpace contract: feature at index $index is categorical, expecting real"
-                )
+                case Categorical(_) =>
+                  throw new IllegalStateException(
+                    s"Violation of FeatureSpace contract: feature at index $index is categorical, expecting real"
+                  )
+              }
             }
-          }
             .toArray
 
         DenseVector(realValues)
@@ -240,29 +246,49 @@ object InformationSimpleFv {
     import NumericConversion.Implicits._
     import VectorOpsT.Implicits._
 
-    val statsForAllRealFeatures = OnlineMeanVariance.batch[D, Double, DenseVector](realOnly)
+    val statsForAllRealFeatures =
+      OnlineMeanVariance.batch[D, Double, DenseVector](realOnly)
 
     import MathOps.Implicits._
     val gf = GaussianFactory[Double]
 
-    val realFeat2estMeanVar: Map[String, GaussianFactory[Double]#Gaussian] =
-      realIndices.map { index =>
-        val g = new gf.Gaussian(
-          mean = statsForAllRealFeatures.mean(index),
-          variance = statsForAllRealFeatures.variance(index),
-          stddev = math.sqrt(statsForAllRealFeatures.variance(index))
-        )
-        (fs.features(index), g)
-      }
+    val realFeat2gaussian: Map[String, GaussianFactory[Double]#Gaussian] =
+      realIndices
+        .map { index =>
+          val g = new gf.Gaussian(
+            mean = statsForAllRealFeatures.mean(index),
+            variance = statsForAllRealFeatures.variance(index),
+            stddev = math.sqrt(statsForAllRealFeatures.variance(index))
+          )
+          (fs.features(index), g)
+        }
         .toMap
+
+    val realFeat2entropy =
+      realFeat2gaussian.map {
+        case (real, gaussian) =>
+          (real, entropyOf(gaussian))
+      }
 
     //
     //
     //
-    // DO CATEGORICAL VARIABLES SECOND
+    // DO CATEGORICAL VARIABLES
     //
     //
     //
+
+    /*
+      Strategy for discrete variables:
+
+      for each feature
+        - count events
+
+      for each feature
+        for each event in feature:
+          - calculate P(event) ==> # events / total
+          - entropy(feature)   ==> - sum( p(event) * log_2( p(event) ) )
+     */
 
     val categoricalOnly: D[Seq[String]] =
       data.map { fv =>
@@ -281,26 +307,6 @@ object InformationSimpleFv {
           }
         }
       }
-
-    //
-    //
-    //
-    // CALCULATE ENTROPY FOR ALL FEATURES
-    //
-    //
-    //
-
-    /*
-      Strategy for discrete variables:
-
-      for each feature
-        - count events
-
-      for each feature
-        for each event in feature:
-          - calculate P(event) ==> # events / total
-          - entropy(feature)   ==> - sum( p(event) * log_2( p(event) ) )
-     */
 
     val catFeat2event2count =
       categoricalOnly.aggregate(Map.empty[String, Map[String, Long]])(
@@ -335,20 +341,37 @@ object InformationSimpleFv {
           (feature, entropyOfFeature)
       }
 
-    /*
-      Strategy for continuous variables:
+    //
+    //
+    //
+    // PRODUCE ENTROPY FOR ALL FEATURES
+    //
+    //
+    //
 
-        (1) Calculate mean & variance for each continous variable.
-        (2) Construct a gaussian with ^^.
-        (3) Calculate entropy of each estimated gaussian.
-     */
-
-    ???
+    fs.feat2index
+      .map {
+        case (featureName, index) =>
+          if (catFeat2Entropy contains featureName)
+            (catFeat2Entropy(featureName), index)
+          else
+            (realFeat2entropy(featureName), index)
+      }
+      .toSeq
+      .sortBy { case (_, index) => index }
+      .map { case (entropy, _) => entropy }
   }
 
   val logBase2 = logBaseX(2.0) _
 
+  val logBaseE = logBaseX(math.E) _
+
   def logBaseX(base: Double)(value: Double): Double =
     math.log(value) / math.log(base)
+
+  private[this] val gaussianEntropyConst = 2.0 * math.Pi * math.E
+
+  def entropyOf(g: GaussianFactory[Double]#Gaussian): Double =
+    logBaseE(math.sqrt(gaussianEntropyConst * g.variance))
 
 }
