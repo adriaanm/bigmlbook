@@ -19,7 +19,7 @@ object Counting {
     else
       map + (e -> times)
 
-  def increment[K1, K2, N: Numeric](
+  def incrementNested[K1, K2, N: Numeric](
     map:  Map[K1, Map[K2, N]],
     key1: K1,
     key2: K2
@@ -29,7 +29,7 @@ object Counting {
     else
       map + (key1 -> Map(key2 -> implicitly[Numeric[N]].one))
 
-  def increment[K1, K2, N: Numeric](
+  def incrementNested[K1, K2, N: Numeric](
     map:   Map[K1, Map[K2, N]],
     key1:  K1,
     key2:  K2,
@@ -68,7 +68,7 @@ object Counting {
     }
   }
 
-  def combine[K1, K2, N: Numeric](
+  def combineNested[K1, K2, N: Numeric](
     m1: Map[K1, Map[K2, N]],
     m2: Map[K1, Map[K2, N]]
   ): Map[K1, Map[K2, N]] = {

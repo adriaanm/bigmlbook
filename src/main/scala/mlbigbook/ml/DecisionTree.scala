@@ -309,14 +309,14 @@ object InformationSimpleFv {
             featureValues.zip(realFeatureNames)
               .foldLeft(feat2event2count) {
                 case (m, (value, name)) =>
-                  Counting.increment(
+                  Counting.incrementNested(
                     m,
                     name,
                     value
                   )
               }
         },
-        Counting.combine[String, String, Long]
+        Counting.combineNested[String, String, Long]
       )
 
     val catFeat2Entropy =
