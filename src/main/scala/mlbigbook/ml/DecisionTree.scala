@@ -1,7 +1,7 @@
 package mlbigbook.ml
 
 import breeze.linalg.DenseVector
-import fif.Data
+import fif.{TravData, Data}
 import mlbigbook.math.{ VectorOpsT, NumericConversion, OnlineMeanVariance }
 
 import scala.annotation.tailrec
@@ -144,19 +144,23 @@ object Id3LearningSimpleFv {
    */
 
   def apply[D[_]: Data, T <: DecisionTree { type FeatureVector = FeatVec; type Decision = Boolean }](
+    dtModule: T,
     data: D[(FeatVec, Boolean)]
   )(
     implicit
     fs: FeatureSpace
-  ): Option[T#Node] =
+  ): Option[T#Node] = {
+    implicit val _ = dtModule
     learn(data, 0 until fs.features.size)
+  }
 
   protected def learn[D[_]: Data, T <: DecisionTree { type FeatureVector = FeatVec; type Decision = Boolean }](
     data:         D[(FeatVec, Boolean)],
     featuresLeft: Seq[Int]
   )(
     implicit
-    fs: FeatureSpace
+    fs: FeatureSpace,
+    dtModule: T
   ): Option[T#Node] =
 
     if (data isEmpty)
@@ -182,27 +186,31 @@ object Id3LearningSimpleFv {
 
         if (featuresLeft isEmpty) {
           if (nPos > nNeg)
-            new T#Leaf(true)
+            new dtModule.Leaf(true)
           else
-            new T#Leaf(false)
+            new dtModule.Leaf(false)
 
         } else {
 
           (nPos, nNeg) match {
 
             case (0l, nonZero) =>
-              new T#Leaf(false)
+              new dtModule.Leaf(false)
 
             case (nonZero, 0l) =>
-              new T#Leaf(true)
+              new dtModule.Leaf(true)
 
             case (_, _) =>
 
-              val entropyOfFeatures = InformationSimpleFv.entropy(data)
+              val entropyOfFeatures = {
+                implicit val _ = (x: (FeatVec, Boolean)) => x._1
+                InformationSimpleFv.entropy(data)
+              }
 
               val indexOfMinEntropyFeature = {
-                implicit val _ = TupleVal2
-                Argmin(entropyOfFeatures.zipWithIndex)
+                implicit val v = TupleVal1[Int]
+                implicit val td = TravData
+                Argmin(entropyOfFeatures.zipWithIndex.toTraversable)
               }
 
               // partition data according to the discrete values of each
@@ -348,7 +356,7 @@ object InformationSimpleFv {
         }
         .toMap
 
-    val realFeat2entropy =
+    val realFeat2entropy: Map[String, Double] =
       realFeat2gaussian.map {
         case (real, gaussian) =>
           (real, entropyOf(gaussian))
@@ -409,7 +417,7 @@ object InformationSimpleFv {
         Counting.combineNested[String, String, Long]
       )
 
-    val catFeat2Entropy =
+    val catFeat2Entropy: Map[String, Double] =
       catFeat2event2count.map {
         case (feature, event2count) =>
 
@@ -453,9 +461,9 @@ object InformationSimpleFv {
   def logBaseX(base: Double)(value: Double): Double =
     math.log(value) / math.log(base)
 
-  private[this] val gaussianEntropyConst = 2.0 * math.Pi * math.E
+  private[this] val gaussianEntropyConst = math.sqrt(2.0 * math.Pi * math.E)
 
   def entropyOf(g: GaussianFactory[Double]#Gaussian): Double =
-    logBaseE(math.sqrt(gaussianEntropyConst * g.variance))
+    logBaseE(gaussianEntropyConst * g.stddev)
 
 }
