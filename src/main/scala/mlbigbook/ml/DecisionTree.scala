@@ -5,7 +5,7 @@ import fif.Data
 import mlbigbook.math.{ VectorOpsT, NumericConversion, OnlineMeanVariance }
 
 import scala.annotation.tailrec
-import scala.language.higherKinds
+import scala.language.{ postfixOps, higherKinds }
 
 object FeatureVectorSupport {
 
@@ -119,14 +119,98 @@ object Id3LearningSimpleFv {
 
     (4) Recurse on subsets using remaining attributes.
 
+
+    ===============
+
+
+    ID3 (Examples, Target_Attribute, Attributes)
+    Create a root node for the tree
+    If all examples are positive, Return the single-node tree Root, with label = +.
+    If all examples are negative, Return the single-node tree Root, with label = -.
+    If number of predicting attributes is empty, then Return the single node tree Root,
+    with label = most common value of the target attribute in the examples.
+    Otherwise Begin
+        A ← The Attribute that best classifies examples.
+        Decision Tree attribute for Root = A.
+        For each possible value, vi, of A,
+            Add a new tree branch below Root, corresponding to the test A = vi.
+            Let Examples(vi) be the subset of examples that have the value vi for A
+            If Examples(vi) is empty
+                Then below this new branch add a leaf node with label = most common target value in the examples
+            Else below this new branch add the subtree ID3 (Examples(vi), Target_Attribute, Attributes – {A})
+    End
+    Return Root
+
    */
 
-  def apply[D[_]: Data, T <: DecisionTree { type FeatureVector = FeatVec; type Decision = String }](
-    data: D[(FeatVec, String)]
+  def apply[D[_]: Data, T <: DecisionTree { type FeatureVector = FeatVec; type Decision = Boolean }](
+    data: D[(FeatVec, Boolean)]
   )(
     implicit
     fs: FeatureSpace
-  ): T#Node = ???
+  ): Option[T#Node] =
+    learn(data, 0 until fs.features.size)
+
+  protected def learn[D[_]: Data, T <: DecisionTree { type FeatureVector = FeatVec; type Decision = Boolean }](
+    data:         D[(FeatVec, Boolean)],
+    featuresLeft: Seq[Int]
+  )(
+    implicit
+    fs: FeatureSpace
+  ): Option[T#Node] =
+
+    if (data isEmpty)
+      None
+
+    else
+      Some {
+
+        val (nPos, nNeg) =
+          data.aggregate((0l, 0l))(
+            {
+              case ((nP, nN), (_, label)) =>
+                if (label)
+                  (nP + 1l, nN)
+                else
+                  (nP, nN + 1l)
+            },
+            {
+              case ((nP1, nN1), (nP2, nN2)) =>
+                (nP1 + nP2, nN1 + nN2)
+            }
+          )
+
+        if (featuresLeft isEmpty) {
+          if (nPos > nNeg)
+            new T#Leaf(true)
+          else
+            new T#Leaf(false)
+
+        } else {
+
+          (nPos, nNeg) match {
+
+            case (0l, nonZero) =>
+              new T#Leaf(false)
+
+            case (nonZero, 0l) =>
+              new T#Leaf(true)
+
+            case (_, _) =>
+
+              val entropyOfFeatures = InformationSimpleFv.entropy(data)
+
+              val indexOfMinEntropyFeature = {
+                implicit val _ = TupleVal2
+                Argmin(entropyOfFeatures.zipWithIndex)
+              }
+
+              // partition data according to the discrete values of each
+
+              ???
+          }
+        }
+      }
 
 }
 

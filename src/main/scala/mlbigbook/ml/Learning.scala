@@ -33,5 +33,5 @@ case class DiscreteEstimator[F: ClassTag, Label, N: Numeric](
     TupleVal2[Label]
 
   val classify: Learning[Feature.Vector[F, N], Label]#Classifier =
-    (x: Feature.Vector[F, N]) => Argmax(estimate(x) toSeq)._1
+    (x: Feature.Vector[F, N]) => ArgmaxOld(estimate(x) toSeq)._1
 }
