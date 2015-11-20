@@ -19,6 +19,27 @@ object Counting {
     else
       map + (e -> times)
 
+  def increment[K1, K2, N: Numeric](
+    map:  Map[K1, Map[K2, N]],
+    key1: K1,
+    key2: K2
+  ): Map[K1, Map[K2, N]] =
+    if (map contains key1)
+      (map - key1) + (key1 -> increment[K2, N](map(key1), key2))
+    else
+      map + (key1 -> Map(key2 -> implicitly[Numeric[N]].one))
+
+  def increment[K1, K2, N: Numeric](
+    map:   Map[K1, Map[K2, N]],
+    key1:  K1,
+    key2:  K2,
+    times: N
+  ): Map[K1, Map[K2, N]] =
+    if (map contains key1)
+      (map - key1) + (key1 -> increment(map(key1), key2, times))
+    else
+      map + (key1 -> Map(key2 -> times))
+
   def count[T, N: Numeric, D[_]: Data](data: D[T]): Map[T, N] =
     count(empty, data)
 
@@ -38,14 +59,32 @@ object Counting {
 
     smaller.foldLeft(larger) {
       case (aggmap, (k, v)) =>
-        aggmap.get(k) match {
+        if (aggmap contains k)
+          (aggmap - k) + (k -> implicitly[Numeric[N]].plus(aggmap(k), v))
 
-          case Some(existing) =>
-            (aggmap - k) + (k -> implicitly[Numeric[N]].plus(existing, v))
+        else
+          aggmap + (k -> v)
+    }
+  }
 
-          case None =>
-            aggmap + (k -> v)
-        }
+  def combine[K1, K2, N: Numeric](
+    m1: Map[K1, Map[K2, N]],
+    m2: Map[K1, Map[K2, N]]
+  ): Map[K1, Map[K2, N]] = {
+    val (smaller, larger) =
+      if (m1.size < m2.size)
+        (m1, m2)
+      else
+        (m2, m1)
+
+    smaller.foldLeft(larger) {
+      case (aggmap, (k1, submap)) =>
+
+        if (aggmap contains k1)
+          (aggmap - k1) + (k1 -> combine(aggmap(k1), submap))
+
+        else
+          aggmap + (k1 -> submap)
     }
   }
 

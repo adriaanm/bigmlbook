@@ -70,7 +70,7 @@ object OnlineMeanVariance {
    * values will be appropriate for all of the prior data that went into creating
    * the existing state as well as this additional data.
    */
-  def apply[D[_] : Data, N: NumericConversion, V[_] <: Vector[_]](
+  def apply[D[_]: Data, N: NumericConversion, V[_] <: Vector[_]](
     existing: State[N, V],
     elems:    D[V[N]]
   )(implicit ops: VectorOpsT[N, V]): State[N, V] =
@@ -121,7 +121,7 @@ object OnlineMeanVariance {
         State[N, V](0, ops.zeros(0), ops.zeros(0))
     }
 
-  def batch[D[_] : Data, N: NumericConversion, V[_] <: Vector[_]](
+  def batch[D[_]: Data, N: NumericConversion, V[_] <: Vector[_]](
     elems: D[V[N]]
   )(implicit ops: VectorOpsT[N, V]): Stats[V[N]] =
     elems.headOption match {

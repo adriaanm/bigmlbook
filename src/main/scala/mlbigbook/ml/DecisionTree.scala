@@ -155,11 +155,30 @@ object InformationSimpleFv {
     //
     //
 
-    val catFeat2event2count: Map[String, Map[String, Long]] = Map.empty
+    val (realIndices, catIndices) =
+      fs.isCategorical
+        .zipWithIndex
+        .foldLeft((Seq.empty[Int], Seq.empty[Int])) {
+          case ((ri, ci), (isCategory, index)) =>
+            if (isCategory)
+              (ri, ci :+ index)
+            else
+              (ri :+ index, ci)
+        }
 
+    val realFeatureNames =
+      realIndices.map { index => fs.features(index) }
 
+    val catFeatureNames =
+      catIndices.map { index => fs.features(index) }
 
-    val realIndices =
+    /*
+
+    Show first:
+
+    Example of doing this for one case:
+
+     val realIndices =
       fs.isCategorical
         .zipWithIndex
         .flatMap {
@@ -170,54 +189,8 @@ object InformationSimpleFv {
               Some(index)
         }
 
-    val realOnly: D[DenseVector[Double]] =
-      data.map { fv =>
-          val realValues =
-            realIndices.map { index =>
-                fv(index) match {
 
-                  case Real(v) =>
-                    v
-
-                  case Categorical(_) =>
-                    throw new IllegalStateException(
-                      s"Violation of FeatureSpace contract: feature at index $index is categorical, expecting real"
-                    )
-                }
-              }
-              .toArray
-
-          DenseVector(realValues)
-        }
-
-
-    import NumericConversion.Implicits._
-    import VectorOpsT.Implicits._
-
-    val statsForAllRealFeatures = OnlineMeanVariance.batch[D, Double, DenseVector](realOnly)
-
-    import MathOps._
-    val gf = GaussianFactory[Double]
-
-    val realFeat2estMeanVar: Map[String, GaussianFactory[Double]#Gaussian] =
-      realIndices.map { index =>
-          val g = new gf.Gaussian(
-            mean = statsForAllRealFeatures.mean(index),
-            variance = statsForAllRealFeatures.variance(index),
-            stddev = math.sqrt(statsForAllRealFeatures.variance(index))
-          )
-          (fs.features(index), g)
-        }
-        .toMap
-
-    //
-    //
-    //
-    // DO CATEGORICAL VARIABLES SECOND
-    //
-    //
-    //
-
+    // analogus case
 
     val catIndices =
       fs.isCategorical
@@ -229,6 +202,67 @@ object InformationSimpleFv {
             else
               None
         }
+
+    // we're reapeating ourselves!
+    // maybe put into a function and apply twice?
+    // ...
+    // let's give that a few seconds' thought
+    // ...
+    // are we really going to _reuse_ this function?
+    // no
+    // it's also not as efficient: we're going through the feature space twice
+    // what if we fold our way through the space, accumulating both sequences?
+    //
+    // <enter actual solution>
+
+     */
+
+    val realOnly: D[DenseVector[Double]] =
+      data.map { fv =>
+        val realValues =
+          realIndices.map { index =>
+            fv(index) match {
+
+              case Real(v) =>
+                v
+
+              case Categorical(_) =>
+                throw new IllegalStateException(
+                  s"Violation of FeatureSpace contract: feature at index $index is categorical, expecting real"
+                )
+            }
+          }
+            .toArray
+
+        DenseVector(realValues)
+      }
+
+    import NumericConversion.Implicits._
+    import VectorOpsT.Implicits._
+
+    val statsForAllRealFeatures = OnlineMeanVariance.batch[D, Double, DenseVector](realOnly)
+
+    import MathOps._
+    val gf = GaussianFactory[Double]
+
+    val realFeat2estMeanVar: Map[String, GaussianFactory[Double]#Gaussian] =
+      realIndices.map { index =>
+        val g = new gf.Gaussian(
+          mean = statsForAllRealFeatures.mean(index),
+          variance = statsForAllRealFeatures.variance(index),
+          stddev = math.sqrt(statsForAllRealFeatures.variance(index))
+        )
+        (fs.features(index), g)
+      }
+        .toMap
+
+    //
+    //
+    //
+    // DO CATEGORICAL VARIABLES SECOND
+    //
+    //
+    //
 
     val categoricalOnly: D[Seq[String]] =
       data.map { fv =>
@@ -256,7 +290,6 @@ object InformationSimpleFv {
     //
     //
 
-
     /*
       Strategy for discrete variables:
 
@@ -268,6 +301,22 @@ object InformationSimpleFv {
           - calculate P(event) ==> # events / total
           - entropy(feature)   ==> - sum( p(event) * log_2( p(event) ) )
      */
+
+    categoricalOnly.aggregate(Map.empty[String, Map[String, Long]])(
+      {
+        case (feat2event2count, featureValues) =>
+          featureValues.zip(realFeatureNames)
+            .foldLeft(feat2event2count) {
+              case (m, (value, name)) =>
+                Counting.increment(
+                  m,
+                  name,
+                  value
+                )
+            }
+      },
+      Counting.combine
+    )
 
     /*
       Strategy for continuous variables:
