@@ -1,7 +1,7 @@
 package mlbigbook.ml
 
-import breeze.linalg.DenseVector
-import fif.{TravData, Data}
+import breeze.linalg.{ Vector, DenseVector }
+import fif.{ TravData, Data }
 import mlbigbook.math.{ VectorOpsT, NumericConversion, OnlineMeanVariance }
 
 import scala.annotation.tailrec
@@ -16,10 +16,76 @@ object FeatureVectorSupport {
   type FeatVec = Seq[Value]
 
   case class FeatureSpace(
-    features:      Seq[String],
-    isCategorical: Seq[Boolean],
-    feat2index:    Map[String, Int]
-  )
+      features:           Seq[String],
+      isCategorical:      Seq[Boolean],
+      feat2index:         Map[String, Int],
+      categorical2values: Map[String, Seq[String]]
+  ) {
+
+    val (realIndices, catIndices) =
+      isCategorical
+        .zipWithIndex
+        .foldLeft((Seq.empty[Int], Seq.empty[Int])) {
+          case ((ri, ci), (isCategory, index)) =>
+            if (isCategory)
+              (ri, ci :+ index)
+            else
+              (ri :+ index, ci)
+        }
+
+    val (realFeatNames, catFeatNames) = (
+      realIndices.map { index => features(index) },
+      catIndices.map { index => features(index) }
+    )
+
+    /*
+
+       [PEDAGOGICAL NOTES for book writing]
+
+       Show first:
+
+       Example of doing this for one case:
+
+        val realIndices =
+         fs.isCategorical
+           .zipWithIndex
+           .flatMap {
+             case (isCategory, index) =>
+               if (isCategory)
+                 None
+               else
+                 Some(index)
+           }
+
+
+       // analogus case
+
+       val catIndices =
+         fs.isCategorical
+           .zipWithIndex
+           .flatMap {
+             case (isCategory, index) =>
+               if(isCategory)
+                 Some(index)
+               else
+                 None
+           }
+
+       // we're reapeating ourselves!
+       // maybe put into a function and apply twice?
+       // ...
+       // let's give that a few seconds' thought
+       // ...
+       // are we really going to _reuse_ this function?
+       // no
+       // it's also not as efficient: we're going through the feature space twice
+       // what if we fold our way through the space, accumulating both sequences?
+       //
+       // <enter actual solution>
+
+    */
+
+  }
 
 }
 
@@ -143,9 +209,9 @@ object Id3LearningSimpleFv {
 
    */
 
-  def apply[D[_]: Data, T <: DecisionTree { type FeatureVector = FeatVec; type Decision = Boolean }](
+  def apply[D[_]: Data, T <: DecisionTree { type FeatureVector = Seq[String]; type Decision = Boolean }](
     dtModule: T,
-    data: D[(FeatVec, Boolean)]
+    data:     D[(Seq[String], Boolean)]
   )(
     implicit
     fs: FeatureSpace
@@ -154,71 +220,82 @@ object Id3LearningSimpleFv {
     learn(data, 0 until fs.features.size)
   }
 
-  protected def learn[D[_]: Data, T <: DecisionTree { type FeatureVector = FeatVec; type Decision = Boolean }](
-    data:         D[(FeatVec, Boolean)],
+  protected def learn[D[_]: Data, T <: DecisionTree { type FeatureVector = Seq[String]; type Decision = Boolean }](
+    data:         D[(Seq[String], Boolean)],
     featuresLeft: Seq[Int]
   )(
     implicit
-    fs: FeatureSpace,
+    fs:       FeatureSpace,
     dtModule: T
   ): Option[T#Node] =
 
     if (data isEmpty)
       None
 
-    else
-      Some {
+    else {
 
-        val (nPos, nNeg) =
-          data.aggregate((0l, 0l))(
-            {
-              case ((nP, nN), (_, label)) =>
-                if (label)
-                  (nP + 1l, nN)
-                else
-                  (nP, nN + 1l)
-            },
-            {
-              case ((nP1, nN1), (nP2, nN2)) =>
-                (nP1 + nP2, nN1 + nN2)
-            }
-          )
-
-        if (featuresLeft isEmpty) {
-          if (nPos > nNeg)
-            new dtModule.Leaf(true)
-          else
-            new dtModule.Leaf(false)
-
-        } else {
-
-          (nPos, nNeg) match {
-
-            case (0l, nonZero) =>
-              new dtModule.Leaf(false)
-
-            case (nonZero, 0l) =>
-              new dtModule.Leaf(true)
-
-            case (_, _) =>
-
-              val entropyOfFeatures = {
-                implicit val _ = (x: (FeatVec, Boolean)) => x._1
-                InformationSimpleFv.entropy(data)
-              }
-
-              val indexOfMinEntropyFeature = {
-                implicit val v = TupleVal1[Int]
-                implicit val td = TravData
-                Argmin(entropyOfFeatures.zipWithIndex.toTraversable)
-              }
-
-              // partition data according to the discrete values of each
-
-              ???
+      val (nPos, nNeg) =
+        data.aggregate((0l, 0l))(
+          {
+            case ((nP, nN), (_, label)) =>
+              if (label)
+                (nP + 1l, nN)
+              else
+                (nP, nN + 1l)
+          },
+          {
+            case ((nP1, nN1), (nP2, nN2)) =>
+              (nP1 + nP2, nN1 + nN2)
           }
+        )
+
+      if (featuresLeft isEmpty) {
+        if (nPos > nNeg)
+          Some(new dtModule.Leaf(true))
+        else
+          Some(new dtModule.Leaf(false))
+
+      } else {
+
+        (nPos, nNeg) match {
+
+          case (0l, nonZero) =>
+            Some(new dtModule.Leaf(false))
+
+          case (nonZero, 0l) =>
+            Some(new dtModule.Leaf(true))
+
+          case (_, _) =>
+
+            val entropyOfFeatures =
+              InformationSimpleFv.entropyCategorical(
+                data.map {
+                  case (categoricalFeatures, _) => categoricalFeatures
+                }
+              )
+
+            {
+              implicit val v = TupleVal1[String]
+              implicit val td = TravData
+              Argmin(entropyOfFeatures.toTraversable)
+            }
+              .map {
+                case (nameOfMinEntropyFeature, _) =>
+                  // partition data according to the discrete values of each
+                  val distinctValues = fs.categorical2values(nameOfMinEntropyFeature)
+
+                  // how to partition ?
+                  // IDEAS:
+                  // (1) implement partition(f: A => Seq[B]): Map[B, D[A]] on Data type class
+                  // (2) use map(f: A => Seq[B]) to turn into D[Seq[[(B, A])]]
+                  //     then unroll with flatMap, getting D[(B,A)]
+                  //     then filter according to each B, getting Seq[D[A]]
+
+                  ???
+              }
         }
       }
+    }
 
 }
 
@@ -226,199 +303,88 @@ object InformationSimpleFv {
 
   import fif.Data.ops._
   import FeatureVectorSupport._
-  import OnlineMeanVariance._
 
-  def entropy[D[_]: Data, FV](
-    data: D[FV]
+  /*
+    Strategy for continuous variables:
+
+      (1) Calculate mean & variance for each continous variable.
+      (2) Construct a gaussian with ^^.
+      (3) Calculate entropy of each estimated gaussian.
+   */
+  def entropyContinous[D[_]: Data, N: NumericConversion, V[_] <: Vector[_]](
+    realOnly: D[V[N]]
   )(
     implicit
-    fs:   FeatureSpace,
-    isFv: FV => FeatVec
-  ): Seq[Double] = {
-
-    val (realIndices, catIndices) =
-      fs.isCategorical
-        .zipWithIndex
-        .foldLeft((Seq.empty[Int], Seq.empty[Int])) {
-          case ((ri, ci), (isCategory, index)) =>
-            if (isCategory)
-              (ri, ci :+ index)
-            else
-              (ri :+ index, ci)
-        }
-
-    val realFeatureNames =
-      realIndices.map { index => fs.features(index) }
-
-    val catFeatureNames =
-      catIndices.map { index => fs.features(index) }
-
-    /*
-
-    Show first:
-
-    Example of doing this for one case:
-
-     val realIndices =
-      fs.isCategorical
-        .zipWithIndex
-        .flatMap {
-          case (isCategory, index) =>
-            if (isCategory)
-              None
-            else
-              Some(index)
-        }
-
-
-    // analogus case
-
-    val catIndices =
-      fs.isCategorical
-        .zipWithIndex
-        .flatMap {
-          case (isCategory, index) =>
-            if(isCategory)
-              Some(index)
-            else
-              None
-        }
-
-    // we're reapeating ourselves!
-    // maybe put into a function and apply twice?
-    // ...
-    // let's give that a few seconds' thought
-    // ...
-    // are we really going to _reuse_ this function?
-    // no
-    // it's also not as efficient: we're going through the feature space twice
-    // what if we fold our way through the space, accumulating both sequences?
-    //
-    // <enter actual solution>
-
-     */
-
-    //
-    //
-    //
-    // DO CONTINUOUS VARIABLES
-    //
-    //
-    //
-
-    /*
-      Strategy for continuous variables:
-
-        (1) Calculate mean & variance for each continous variable.
-        (2) Construct a gaussian with ^^.
-        (3) Calculate entropy of each estimated gaussian.
-    */
-
-    val realOnly: D[DenseVector[Double]] =
-      data.map { fv =>
-        val realValues =
-          realIndices
-            .map { index =>
-              fv(index) match {
-
-                case Real(v) =>
-                  v
-
-                case Categorical(_) =>
-                  throw new IllegalStateException(
-                    s"Violation of FeatureSpace contract: feature at index $index is categorical, expecting real"
-                  )
-              }
-            }
-            .toArray
-
-        DenseVector(realValues)
-      }
-
-    import NumericConversion.Implicits._
-    import VectorOpsT.Implicits._
+    ops: VectorOpsT[N, V],
+    fs:  FeatureSpace
+  ): Map[String, Double] = {
 
     val statsForAllRealFeatures =
-      OnlineMeanVariance.batch[D, Double, DenseVector](realOnly)
+      OnlineMeanVariance.batch[D, N, V](realOnly)
 
-    import MathOps.Implicits._
-    val gf = GaussianFactory[Double]
+    val gf = {
+      import MathOps.Implicits._
+      GaussianFactory[Double]
+    }
 
-    val realFeat2gaussian: Map[String, GaussianFactory[Double]#Gaussian] =
-      realIndices
-        .map { index =>
-          val g = new gf.Gaussian(
-            mean = statsForAllRealFeatures.mean(index),
-            variance = statsForAllRealFeatures.variance(index),
-            stddev = math.sqrt(statsForAllRealFeatures.variance(index))
-          )
-          (fs.features(index), g)
+    val realFeat2gaussian: Map[String, GaussianFactory[Double]#Gaussian] = {
+      val toDouble = NumericConversion[N].numeric.toDouble _
+      (0 until statsForAllRealFeatures.mean.size)
+        .zip(fs.realFeatNames)
+        .map {
+          case (index, realFeatName) =>
+            val g = new gf.Gaussian(
+              mean = toDouble(ops.valueAt(statsForAllRealFeatures.mean)(index)),
+              variance = toDouble(ops.valueAt(statsForAllRealFeatures.variance)(index)),
+              stddev = toDouble(ops.valueAt(statsForAllRealFeatures.variance)(index))
+            )
+            (realFeatName, g)
         }
         .toMap
+    }
 
-    val realFeat2entropy: Map[String, Double] =
-      realFeat2gaussian.map {
-        case (real, gaussian) =>
-          (real, entropyOf(gaussian))
+    realFeat2gaussian
+      .map {
+        case (realFeatName, gaussian) =>
+          (realFeatName, entropyOf(gaussian))
       }
+  }
 
-    //
-    //
-    //
-    // DO CATEGORICAL VARIABLES
-    //
-    //
-    //
+  /*
+    Strategy for discrete variables:
 
-    /*
-      Strategy for discrete variables:
+    for each feature
+      - count events
 
-      for each feature
-        - count events
-
-      for each feature
-        for each event in feature:
-          - calculate P(event) ==> # events / total
-          - entropy(feature)   ==> - sum( p(event) * log_2( p(event) ) )
-     */
-
-    val categoricalOnly: D[Seq[String]] =
-      data.map { fv =>
-
-        catIndices.map { index =>
-
-          fv(index) match {
-
-            case Categorical(v) =>
-              v
-
-            case Real(_) =>
-              throw new IllegalStateException(
-                s"Violation of FeatureSpace contract: feature at index $index is real, expecting categorical"
-              )
-          }
-        }
-      }
+    for each feature
+      for each event in feature:
+        - calculate P(event) ==> # events / total
+        - entropy(feature)   ==> - sum( p(event) * log_2( p(event) ) )
+   */
+  def entropyCategorical[D[_]: Data](
+    categoricalOnly: D[Seq[String]]
+  )(implicit fs: FeatureSpace): Map[String, Double] = {
 
     val catFeat2event2count =
-      categoricalOnly.aggregate(Map.empty[String, Map[String, Long]])(
-        {
-          case (feat2event2count, featureValues) =>
-            featureValues.zip(realFeatureNames)
-              .foldLeft(feat2event2count) {
-                case (m, (value, name)) =>
-                  Counting.incrementNested(
-                    m,
-                    name,
-                    value
-                  )
-              }
-        },
-        Counting.combineNested[String, String, Long]
-      )
+      categoricalOnly
+        .aggregate(Map.empty[String, Map[String, Long]])(
+          {
+            case (feat2event2count, featureValues) =>
+              featureValues.zip(fs.catFeatNames)
+                .foldLeft(feat2event2count) {
+                  case (m, (value, name)) =>
+                    Counting.incrementNested(
+                      m,
+                      name,
+                      value
+                    )
+                }
+          },
+          Counting.combineNested[String, String, Long]
+        )
 
-    val catFeat2Entropy: Map[String, Double] =
-      catFeat2event2count.map {
+    catFeat2event2count
+      .map {
         case (feature, event2count) =>
 
           val entropyOfFeature = {
@@ -432,15 +398,60 @@ object InformationSimpleFv {
 
           (feature, entropyOfFeature)
       }
+  }
 
-    //
-    //
-    //
-    // PRODUCE ENTROPY FOR ALL FEATURES
-    //
-    //
-    //
+  def entropy[D[_]: Data, FV](
+    data: D[FV]
+  )(
+    implicit
+    fs:   FeatureSpace,
+    isFv: FV => FeatVec
+  ): Seq[Double] = {
 
+    val realFeat2entropy = {
+
+      val realOnly: D[DenseVector[Double]] =
+        data.map { fv =>
+          val realValues =
+            fs.realIndices
+              .map { index =>
+                fv(index) match {
+                  case Real(v) => v
+                  case Categorical(_) =>
+                    throw new IllegalStateException(
+                      s"Violation of FeatureSpace contract: feature at index $index is categorical, expecting real"
+                    )
+                }
+              }
+              .toArray
+          DenseVector(realValues)
+        }
+
+      import NumericConversion.Implicits._
+      import VectorOpsT.Implicits._
+      entropyContinous(realOnly)
+    }
+
+    val catFeat2Entropy = {
+
+      val categoricalOnly: D[Seq[String]] =
+        data.map { fv =>
+          fs.catIndices.map { index =>
+            fv(index) match {
+              case Categorical(v) => v
+              case Real(_) =>
+                throw new IllegalStateException(
+                  s"Violation of FeatureSpace contract: feature at index $index is real, expecting categorical"
+                )
+            }
+          }
+        }
+
+      entropyCategorical(categoricalOnly)
+    }
+
+    // put calculated entropy for both continuous and categorical features into
+    // the same (feature name --> entropy) mapping
     fs.feat2index
       .map {
         case (featureName, index) =>
