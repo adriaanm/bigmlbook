@@ -50,6 +50,32 @@ class DecisionTreeTest extends FunSuite {
     }
   }
 
+  test("Decision tree toString is properly nested.") {
+
+    val decisionTree = {
+      val trueChild = dtModule.Leaf(true)
+      val falseChild = dtModule.Leaf(false)
+      val test = (ignored: Seq[String]) => trueChild
+      val nested = dtModule.Parent(
+        test,
+        Seq(trueChild, falseChild)
+      )
+      dtModule.Parent(
+        test,
+        Seq(trueChild, falseChild, nested)
+      )
+    }
+
+    assert(decisionTree.toString == """Parent(
+                                      |  Leaf(decision=true)
+                                      |  Leaf(decision=false)
+                                      |  Parent(
+                                      |    Leaf(decision=true)
+                                      |    Leaf(decision=false)
+                                      |  )
+                                      |)""".stripMargin)
+  }
+
 }
 
 object DecisionTreeTest {

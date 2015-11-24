@@ -139,13 +139,13 @@ object Id3LearningSimpleFv {
 
                     dtModule.Parent(
                       (fv: Seq[String]) => {
-                      val valueOfMinEntropyFeat = fv(indexOfMinEntropyFeat)
-                      if (fv.size > indexOfMinEntropyFeat &&
-                        distinct2child.contains(valueOfMinEntropyFeat))
-                        distinct2child(valueOfMinEntropyFeat)
-                      else
-                        defaultToMajDecision
-                    },
+                        val valueOfMinEntropyFeat = fv(indexOfMinEntropyFeat)
+                        if (fv.size > indexOfMinEntropyFeat &&
+                          distinct2child.contains(valueOfMinEntropyFeat))
+                          distinct2child(valueOfMinEntropyFeat)
+                        else
+                          defaultToMajDecision
+                      },
                       children
                     )
                   }

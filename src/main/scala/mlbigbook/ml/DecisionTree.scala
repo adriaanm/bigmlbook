@@ -38,7 +38,28 @@ trait DecisionTree {
    * The Node abstract data type has two concrete instantiations:
    * Parent and Leaf.
    */
-  sealed trait Node
+  sealed trait Node {
+
+    override def toString =
+      nodeToString(this, 0)
+
+    private[this] def nodeToString(n: Node, depth: Int): String = {
+      val depthString = (0 until depth).map { _ => "  " }.mkString("")
+      n match {
+
+        case Parent(_, children) =>
+          val childrenStr =
+            children.map { child => nodeToString(child, depth + 1) }.mkString("\n")
+          s"""${depthString}Parent(
+                              |$childrenStr
+              |$depthString)""".stripMargin
+
+        case Leaf(decision) =>
+          s"${depthString}Leaf(decision=$decision)"
+      }
+    }
+
+  }
 
   /**
    * A Parent is a Node sub-type that makes up a decision tree. Parents contain
