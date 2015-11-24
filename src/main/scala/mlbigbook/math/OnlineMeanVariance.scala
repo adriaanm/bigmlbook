@@ -110,7 +110,9 @@ object OnlineMeanVariance {
                     )
 
                   // := m21 + m22 + ((delta * delta) * n1 * n2) / (n1 + n2)
-                  ops.addV(ops.addV(m21, m22), fraction)
+                  ops.addV(
+                    ops.addV(m21, m22), fraction
+                  )
                 }
 
                 State[N, V](newN, newMean, newM)

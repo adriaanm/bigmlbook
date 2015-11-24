@@ -22,6 +22,8 @@ object FeatureVectorSupport {
       categorical2values: Map[String, Seq[String]]
   ) {
 
+    val size = features.size
+
     val (realIndices, catIndices) =
       isCategorical
         .zipWithIndex
@@ -113,7 +115,7 @@ trait DecisionTree {
    * sequence of children and a feature vector. The test will inspect values
    * from the vector to determine which of the children to output.
    */
-  final type Test = (Children, FeatureVector) => Node
+  final type Test = FeatureVector => Node
 
   /**
    * A node of a decision tree. By itself, a Node instance is a fully
@@ -133,7 +135,7 @@ trait DecisionTree {
    * one uses a Parent node's Test function to select from one of its own
    * children.
    */
-  case class Parent(t: Test, c: Children) extends Node
+  sealed case class Parent(t: Test, c: Children) extends Node
 
   /**
    * A Leaf is a Node sub-type that makes up a decision tree. Leaves are the
@@ -141,12 +143,12 @@ trait DecisionTree {
    * stops once a Leaf is encountered. At such a point, the Decision instance
    * contained within the Leaf is returned as the decision tree's response.
    */
-  case class Leaf(d: Decision) extends Node
+  sealed case class Leaf(d: Decision) extends Node
 
   /**
    * The function type for making decisions using a decision tree node.
    */
-  type Decider = Node => FeatureVector => Decision
+  final type Decider = Node => FeatureVector => Decision
 
   /**
    * Implementation of the decision making process using a decision tree.
@@ -158,8 +160,8 @@ trait DecisionTree {
         @tailrec def descend(n: Node): Decision =
           n match {
 
-            case Parent(test, children) =>
-              descend(test(children, featureVector))
+            case Parent(test, _) =>
+              descend(test(featureVector))
 
             case Leaf(d) =>
               d
@@ -209,25 +211,30 @@ object Id3LearningSimpleFv {
 
    */
 
-  def apply[D[_]: Data, T <: DecisionTree { type FeatureVector = Seq[String]; type Decision = Boolean }](
+  def learn[D[_]: Data, T <: DecisionTree { type FeatureVector = Seq[String]; type Decision = Boolean }](
     dtModule: T,
     data:     D[(Seq[String], Boolean)]
   )(
     implicit
     fs: FeatureSpace
-  ): Option[T#Node] = {
-    implicit val _ = dtModule
-    learn(data, 0 until fs.features.size)
-  }
+  ): Option[dtModule.Node] =
+    if (fs.size > 0 && fs.isCategorical.forall(identity))
+      learn_h(data, (0 until fs.features.size).toSet)(
+        implicitly[Data[D]],
+        fs,
+        dtModule
+      )
+    else
+      None
 
-  protected def learn[D[_]: Data, T <: DecisionTree { type FeatureVector = Seq[String]; type Decision = Boolean }](
+  private[this] def learn_h[D[_]: Data, T <: DecisionTree { type FeatureVector = Seq[String]; type Decision = Boolean }](
     data:         D[(Seq[String], Boolean)],
-    featuresLeft: Seq[Int]
+    featuresLeft: Set[Int]
   )(
     implicit
     fs:       FeatureSpace,
     dtModule: T
-  ): Option[T#Node] =
+  ): Option[dtModule.Node] =
 
     if (data isEmpty)
       None
@@ -249,13 +256,12 @@ object Id3LearningSimpleFv {
           }
         )
 
-      if (featuresLeft isEmpty) {
-        if (nPos > nNeg)
-          Some(new dtModule.Leaf(true))
-        else
-          Some(new dtModule.Leaf(false))
+      val majorityDec = nPos > nNeg
 
-      } else {
+      if (featuresLeft isEmpty)
+        Some(new dtModule.Leaf(majorityDec))
+
+      else {
 
         (nPos, nNeg) match {
 
@@ -275,7 +281,7 @@ object Id3LearningSimpleFv {
               )
 
             {
-              implicit val v = TupleVal1[String]
+              implicit val v = TupleVal2[String]
               implicit val td = TravData
               Argmin(entropyOfFeatures.toTraversable)
             }
@@ -283,15 +289,68 @@ object Id3LearningSimpleFv {
                 case (nameOfMinEntropyFeature, _) =>
                   // partition data according to the discrete values of each
                   val distinctValues = fs.categorical2values(nameOfMinEntropyFeature)
+                  val indexOfMinEntropyFeat = fs.feat2index(nameOfMinEntropyFeature)
+                  val newFeaturesLeft = featuresLeft - indexOfMinEntropyFeat
 
-                  // how to partition ?
-                  // IDEAS:
-                  // (1) implement partition(f: A => Seq[B]): Map[B, D[A]] on Data type class
-                  // (2) use map(f: A => Seq[B]) to turn into D[Seq[[(B, A])]]
-                  //     then unroll with flatMap, getting D[(B,A)]
-                  //     then filter according to each B, getting Seq[D[A]]
+                  val partitionedByDistinctValues: Seq[(String, D[(Seq[String], Boolean)])] =
+                    distinctValues
+                      .map { distinct =>
 
-                  ???
+                        val partitionedForDistinct =
+                          data
+                            .filter {
+                              case (catFeats, _) =>
+                                catFeats(indexOfMinEntropyFeat) == distinct
+                            }
+
+                        (distinct, partitionedForDistinct)
+                      }
+
+                  // Final steps to make the parent node:
+                  // (1) recursively apply learn() to each partition
+                  // (2) when not none, add as a child
+                  // (3) if all none, then turn into a leaf w/ decision = majority vote of data
+                  // (4) in parent's test, if given a bad feature vector or one whose feature
+                  //     value maps to a learn() call that resulted in None, then default to
+                  //     a leaf node with decision = majority vote
+
+                  val childrenResults =
+                    partitionedByDistinctValues
+                      .map {
+                        case (_, partitionedForDistinct) =>
+                          learn_h(partitionedForDistinct, newFeaturesLeft)
+                      }
+                      .zipWithIndex
+
+                  val defaultToMajDecision = new dtModule.Leaf(majorityDec)
+
+                  if (childrenResults.forall { case (m, _) => m.isEmpty })
+                    defaultToMajDecision
+
+                  else {
+
+                    val distinct2child =
+                      childrenResults
+                        .collect {
+                          case (Some(child), index) =>
+                            (distinctValues(index), child)
+                        }
+                        .toMap
+
+                    val children = distinct2child.values.toSeq
+
+                    new dtModule.Parent(
+                      t = (fv: Seq[String]) => {
+                      val valueOfMinEntropyFeat = fv(indexOfMinEntropyFeat)
+                      if (fv.size > indexOfMinEntropyFeat &&
+                        distinct2child.contains(valueOfMinEntropyFeat))
+                        distinct2child(valueOfMinEntropyFeat)
+                      else
+                        defaultToMajDecision
+                    },
+                      c = children
+                    )
+                  }
               }
         }
       }
