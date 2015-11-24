@@ -9,7 +9,7 @@ object Id3LearningSimpleFv {
   import FeatureVectorSupport._
   import fif.Data.ops._
 
-  def learn[D[_]: Data, T <: DecisionTree { type FeatureVector = Seq[String]; type Decision = Boolean }](
+  def apply[D[_]: Data, T <: DecisionTree { type FeatureVector = Seq[String]; type Decision = Boolean }](
     dtModule: T,
     data:     D[(Seq[String], Boolean)]
   )(
@@ -17,7 +17,7 @@ object Id3LearningSimpleFv {
     fs: FeatureSpace
   ): Option[dtModule.Node] =
     if (fs.size > 0 && fs.isCategorical.forall(identity))
-      learn_h(data, (0 until fs.features.size).toSet)(
+      learn(data, (0 until fs.features.size).toSet)(
         implicitly[Data[D]],
         fs,
         dtModule
@@ -25,7 +25,7 @@ object Id3LearningSimpleFv {
     else
       None
 
-  private[this] def learn_h[D[_]: Data, T <: DecisionTree { type FeatureVector = Seq[String]; type Decision = Boolean }](
+  private[this] def learn[D[_]: Data, T <: DecisionTree { type FeatureVector = Seq[String]; type Decision = Boolean }](
     data:         D[(Seq[String], Boolean)],
     featuresLeft: Set[Int]
   )(
@@ -57,17 +57,17 @@ object Id3LearningSimpleFv {
       val majorityDec = nPos > nNeg
 
       if (featuresLeft isEmpty)
-        Some(new dtModule.Leaf(majorityDec))
+        Some(dtModule.Leaf(majorityDec))
 
       else {
 
         (nPos, nNeg) match {
 
           case (0l, nonZero) =>
-            Some(new dtModule.Leaf(false))
+            Some(dtModule.Leaf(false))
 
           case (nonZero, 0l) =>
-            Some(new dtModule.Leaf(true))
+            Some(dtModule.Leaf(true))
 
           case (_, _) =>
 
@@ -116,11 +116,11 @@ object Id3LearningSimpleFv {
                     partitionedByDistinctValues
                       .map {
                         case (_, partitionedForDistinct) =>
-                          learn_h(partitionedForDistinct, newFeaturesLeft)
+                          learn(partitionedForDistinct, newFeaturesLeft)
                       }
                       .zipWithIndex
 
-                  val defaultToMajDecision = new dtModule.Leaf(majorityDec)
+                  val defaultToMajDecision = dtModule.Leaf(majorityDec)
 
                   if (childrenResults.forall { case (m, _) => m.isEmpty })
                     defaultToMajDecision
@@ -137,8 +137,8 @@ object Id3LearningSimpleFv {
 
                     val children = distinct2child.values.toSeq
 
-                    new dtModule.Parent(
-                      t = (fv: Seq[String]) => {
+                    dtModule.Parent(
+                      (fv: Seq[String]) => {
                       val valueOfMinEntropyFeat = fv(indexOfMinEntropyFeat)
                       if (fv.size > indexOfMinEntropyFeat &&
                         distinct2child.contains(valueOfMinEntropyFeat))
@@ -146,7 +146,7 @@ object Id3LearningSimpleFv {
                       else
                         defaultToMajDecision
                     },
-                      c = children
+                      children
                     )
                   }
               }

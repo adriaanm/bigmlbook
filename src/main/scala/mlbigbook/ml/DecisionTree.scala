@@ -82,3 +82,13 @@ trait DecisionTree {
       descend(decisionTree)
     }
 }
+
+object DecisionTree {
+
+  def apply[D, FV]: DecisionTree { type Decision = D; type FeatureVector = FV } =
+    new DecisionTree {
+      override type Decision = D
+      override type FeatureVector = FV
+    }
+
+}
